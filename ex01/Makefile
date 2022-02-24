@@ -17,6 +17,6 @@ run:
 	./download https://c.tenor.com/XCI9evLXjHcAAAAd/%E3%83%89%E3%83%A9%E3%81%88%E3%82%82%E3%82%93-doraemon.gif
 
 rm:
-	rm -rf out.gif
+	rm -rf *.gif
 
 .PHONY: all clean fclean re test
