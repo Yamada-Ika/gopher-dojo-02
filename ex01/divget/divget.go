@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func genFileUrlToPath(url string) string {
@@ -49,7 +51,6 @@ func makeRequest(dataRange *byteRange, fileUrl string, index int) error {
 	newBodies[index] = body
 	mutex.Unlock()
 	defer resp.Body.Close()
-	wg.Done()
 	return nil
 }
 
@@ -72,11 +73,11 @@ func makeByteRangeArray(contentLength, divNum int) []byteRange {
 	return array
 }
 
-var wg sync.WaitGroup
+var eg errgroup.Group
 var args []string
 
 func validateArgs() error {
-	args := os.Args
+	args = os.Args
 	if len(args) != 2 {
 		return errors.New("error: Invalid argument")
 	}
@@ -97,10 +98,19 @@ func Start() error {
 
 	data := makeByteRangeArray(contentLength, 2)
 	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go makeRequest(&data[i], fileUrl, i)
+		i := i
+		eg.Go(func() error {
+			fmt.Println(i)
+			err := makeRequest(&data[i], fileUrl, i)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
 	}
-	wg.Wait()
+	if err := eg.Wait(); err != nil {
+		return err
+	}
 
 	f1, err := os.OpenFile(genFileUrlToPath(fileUrl), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
