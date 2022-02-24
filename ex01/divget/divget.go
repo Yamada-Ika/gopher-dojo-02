@@ -73,12 +73,19 @@ func makeByteRangeArray(contentLength, divNum int) []byteRange {
 }
 
 var wg sync.WaitGroup
+var args []string
 
-func Start() error {
+func validateArgs() error {
 	args := os.Args
 	if len(args) != 2 {
-		fmt.Println("error")
 		return errors.New("error: Invalid argument")
+	}
+	return nil
+}
+
+func Start() error {
+	if err := validateArgs(); err != nil {
+		return err
 	}
 	fileUrl := args[1]
 	resp0, err := http.Head(fileUrl)
@@ -95,7 +102,7 @@ func Start() error {
 	}
 	wg.Wait()
 
-	f1, err := os.OpenFile("out.gif", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	f1, err := os.OpenFile(genFileUrlToPath(fileUrl), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return err
 	}
