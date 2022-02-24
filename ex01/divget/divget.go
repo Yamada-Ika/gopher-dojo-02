@@ -117,12 +117,14 @@ func getContentInfo() (*contentInfo, error) {
 }
 
 func calcParallelNum(config *contentInfo) int {
+	// TODO 並列数の指定方法
 	if config.canRangeAccess {
 		return 2
 	}
 	return 1
 }
 
+// TODO キャンセルの処理
 func Start() error {
 	if err := validateArgs(); err != nil {
 		return err
