@@ -56,7 +56,14 @@ func makeRequest(dataRange *byteRange, fileUrl string, index int) error {
 
 func makeByteRangeArray(contentLength, divNum int) []byteRange {
 	var array []byteRange
-	delta := (int)(contentLength / 2)
+
+	if divNum == 1 {
+		elem := byteRange{0, contentLength - 1}
+		array = append(array, elem)
+		return array
+	}
+
+	delta := (int)(contentLength / divNum)
 	from := 0
 	to := delta
 
@@ -84,24 +91,55 @@ func validateArgs() error {
 	return nil
 }
 
+type contentInfo struct {
+	fileUrl        string
+	contentLength  int
+	canRangeAccess bool
+}
+
+func getContentInfo() (*contentInfo, error) {
+	var config contentInfo
+
+	config.fileUrl = args[1]
+	resp, err := http.Head(config.fileUrl)
+	if err != nil {
+		return nil, err
+	}
+	config.contentLength = (int)(resp.ContentLength)
+	if resp.Header["Accept-Ranges"] != nil {
+		config.canRangeAccess = true
+	} else {
+		config.canRangeAccess = false
+	}
+	defer resp.Body.Close()
+
+	return &config, nil
+}
+
+func calcParallelNum(config *contentInfo) int {
+	if config.canRangeAccess {
+		return 2
+	}
+	return 1
+}
+
 func Start() error {
 	if err := validateArgs(); err != nil {
 		return err
 	}
-	fileUrl := args[1]
-	resp0, err := http.Head(fileUrl)
+
+	config, err := getContentInfo()
 	if err != nil {
 		return err
 	}
-	contentLength := (int)(resp0.ContentLength)
-	defer resp0.Body.Close()
 
-	data := makeByteRangeArray(contentLength, 2)
-	for i := 0; i < 2; i++ {
+	parallelNum := calcParallelNum(config)
+	data := makeByteRangeArray(config.contentLength, parallelNum)
+	for i := 0; i < parallelNum; i++ {
 		i := i
 		eg.Go(func() error {
 			fmt.Println(i)
-			err := makeRequest(&data[i], fileUrl, i)
+			err := makeRequest(&data[i], config.fileUrl, i)
 			if err != nil {
 				return err
 			}
@@ -112,7 +150,7 @@ func Start() error {
 		return err
 	}
 
-	f1, err := os.OpenFile(genFileUrlToPath(fileUrl), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	f1, err := os.OpenFile(genFileUrlToPath(config.fileUrl), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return err
 	}
