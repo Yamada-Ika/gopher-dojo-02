@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+type word string
+
 var wordArray []string
 var wordArrayLen int
 
@@ -29,12 +31,16 @@ func genRandomWordArray() error {
 	return nil
 }
 
+func getRandomWord() string {
+	return wordArray[rand.Intn(wordArrayLen)]
+}
+
 var solveCount int
 
-func typing(ctx context.Context) {
+func runTyping(ctx context.Context) {
 	rand.Seed(time.Now().UnixNano())
 	for {
-		word := wordArray[rand.Intn(wordArrayLen)]
+		word := getRandomWord()
 		fmt.Println(word)
 		fmt.Printf("-> ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -49,14 +55,17 @@ func typing(ctx context.Context) {
 	}
 }
 
-func StartGame() {
-	genRandomWordArray()
+func StartGame() error {
+	if err := genRandomWordArray(); err != nil {
+		return err
+	}
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
-	go typing(ctx)
+	go runTyping(ctx)
 	select {
 	case <-ctx.Done():
 		fmt.Printf("\nTime's up! Score: %d\n", solveCount)
 	}
+	return nil
 }
