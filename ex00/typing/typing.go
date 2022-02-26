@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-type word string
-
 var wordArray []string
 var wordArrayLen int
 
