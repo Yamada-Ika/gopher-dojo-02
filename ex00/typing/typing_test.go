@@ -1,19 +1,32 @@
-package typing
+package typing_test
 
-import "testing"
+import (
+	"bytes"
+	"testing"
 
-func TestStartGame(t *testing.T) {
+	"example.com/ex00/typing"
+)
+
+func TestExportPrintProblem(t *testing.T) {
+	type args struct {
+		w    *bytes.Buffer
+		word string
+	}
 	tests := []struct {
-		name    string
-		wantErr bool
+		name string
+		args args
+		exp  string
 	}{
 		// TODO: Add test cases.
-		{"normal", false},
+		{"normal", args{&bytes.Buffer{}, "hoge"}, "hoge\n->"},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			if err := StartGame(); (err != nil) != tt.wantErr {
-				t.Errorf("StartGame() error = %v, wantErr %v", err, tt.wantErr)
+			t.Parallel()
+			typing.ExportPrintProblem(tt.args.w, tt.args.word)
+			if tt.args.w.String() != tt.exp {
+				t.Errorf("ExportPrintProblem() got = %v, expected %v", tt.args.w.String(), tt.exp)
 			}
 		})
 	}

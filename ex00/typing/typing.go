@@ -4,66 +4,78 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
-	"os"
-	"strings"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
-var wordArray []string
-var wordArrayLen int
-
-func genRandomWordArray() error {
-	f, err := os.Open("/usr/share/dict/web2")
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	b, err := ioutil.ReadAll(f)
-	if err != nil {
-		return err
-	}
-	wordArray = strings.Split(string(b), "\n")
-	wordArrayLen = len(wordArray)
-	return nil
+func printProblem(w io.Writer, problem string) {
+	fmt.Fprintf(w, "%s\n->", problem)
 }
 
-func getRandomWord() string {
-	return wordArray[rand.Intn(wordArrayLen)]
+func solve(r io.Reader) (ans string) {
+	scanner := bufio.NewScanner(r)
+	if scanner.Scan() {
+		return scanner.Text()
+	}
+	return ""
 }
 
-var solveCount int
+func checkTheAnswer(exp, ans string) bool {
+	return exp == ans
+}
 
-func runTyping(ctx context.Context) {
+func isEmpty(s string) bool {
+	return s == ""
+}
+
+func getSolveCount(ctx context.Context) (uint64, bool) {
+	val, ok := ctx.Value("solveCount").(uint64)
+	return val, ok
+}
+
+func skip(w io.Writer) {
+	fmt.Fprintf(w, "\n")
+}
+
+func changeSeed() {
 	rand.Seed(time.Now().UnixNano())
-	for {
-		word := getRandomWord()
-		fmt.Println(word)
-		fmt.Printf("-> ")
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			if scanner.Text() != word {
-				fmt.Printf("\033[1A\033[3C\033[K")
+}
+
+func Start(cf *Config) error {
+	ctx, finish := signal.NotifyContext(context.Background(), syscall.SIGQUIT)
+	defer finish()
+
+	ctx, _ = context.WithTimeout(ctx, cf.gameTime)
+
+	go func() {
+		var count uint64
+		changeSeed()
+		for {
+			word := getRandomWord(cf.asset)
+			printProblem(cf.w, word)
+			ans := solve(cf.r)
+			if isEmpty(ans) {
+				skip(cf.w)
 				continue
 			}
-			solveCount++
-			break
+			if checkTheAnswer(word, ans) {
+				count++
+				ctx = context.WithValue(ctx, "solveCount", count)
+			}
 		}
-	}
-}
+	}()
 
-func StartGame() error {
-	if err := genRandomWordArray(); err != nil {
-		return err
-	}
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
-	defer cancel()
-	go runTyping(ctx)
 	select {
 	case <-ctx.Done():
-		fmt.Printf("\nTime's up! Score: %d\n", solveCount)
+		solveCount, ok := getSolveCount(ctx)
+		if ok {
+			fmt.Fprintf(cf.w, "\nTime's up! Score: %d\n", solveCount)
+		} else {
+			fmt.Fprintf(cf.w, "\nScore can not count...\n")
+		}
 	}
 	return nil
 }
