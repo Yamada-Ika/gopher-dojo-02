@@ -1,78 +1,41 @@
 package divget
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"net/http/httputil"
+	"io"
 	"os"
-	"strings"
-	"sync"
+	"os/signal"
+	"syscall"
 
 	"golang.org/x/sync/errgroup"
 )
 
-func genFileUrlToPath(url string) string {
-	urls := strings.Split(url, "/")
-	return urls[len(urls)-1]
-}
-
 type byteRange struct {
-	from int
-	to   int
+	from uint64
+	to   uint64
 }
 
-var bodies [][]byte
-var newBodies map[int][]byte = make(map[int][]byte)
-var mutex sync.Mutex
-
-func makeRequest(dataRange *byteRange, fileUrl string, index int) error {
-	req, err := http.NewRequest("GET", fileUrl, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", dataRange.from, dataRange.to))
-
-	dump, _ := httputil.DumpRequestOut(req, true)
-	fmt.Printf("%s\n", dump)
-
-	client := new(http.Client)
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	mutex.Lock()
-	newBodies[index] = body
-	mutex.Unlock()
-	defer resp.Body.Close()
-	return nil
-}
-
-func makeByteRangeArray(contentLength, divNum int) []byteRange {
+func makeByteRangeArray(fileSize, divNum uint64) []byteRange {
 	var array []byteRange
 
 	if divNum == 1 {
-		elem := byteRange{0, contentLength - 1}
+		elem := byteRange{0, fileSize - 1}
 		array = append(array, elem)
 		return array
 	}
 
-	delta := (int)(contentLength / divNum)
-	from := 0
+	delta := (uint64)(fileSize / divNum)
+	from := uint64(0)
 	to := delta
 
-	for i := 0; i < divNum; i++ {
+	for i := uint64(0); i < divNum; i++ {
 		elem := byteRange{from, to}
 		array = append(array, elem)
 		from = to + 1
 		if i == divNum-2 {
-			to = contentLength - 1
+			to = fileSize - 1
 		} else {
 			to = from + delta
 		}
@@ -81,68 +44,33 @@ func makeByteRangeArray(contentLength, divNum int) []byteRange {
 }
 
 var eg errgroup.Group
-var args []string
-
-func validateArgs() error {
-	args = os.Args
-	if len(args) != 2 {
-		return errors.New("error: Invalid argument")
-	}
-	return nil
-}
-
-type contentInfo struct {
-	fileUrl        string
-	contentLength  int
-	canRangeAccess bool
-}
-
-func getContentInfo() (*contentInfo, error) {
-	var config contentInfo
-
-	config.fileUrl = args[1]
-	resp, err := http.Head(config.fileUrl)
-	if err != nil {
-		return nil, err
-	}
-	config.contentLength = (int)(resp.ContentLength)
-	if resp.Header["Accept-Ranges"] != nil {
-		config.canRangeAccess = true
-	} else {
-		config.canRangeAccess = false
-	}
-	defer resp.Body.Close()
-
-	return &config, nil
-}
-
-func calcParallelNum(config *contentInfo) int {
-	// TODO 並列数の指定方法
-	if config.canRangeAccess {
-		return 2
-	}
-	return 1
-}
 
 // TODO キャンセルの処理
-func Start() error {
-	if err := validateArgs(); err != nil {
-		return err
-	}
+func Run(url string, parallelN uint64) error {
 
-	config, err := getContentInfo()
+	ctx, finish := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	ctx, _ = signal.NotifyContext(ctx, syscall.SIGINT)
+	ctx, _ = signal.NotifyContext(ctx, syscall.SIGQUIT)
+	defer finish()
+
+	// config（divget内で使う設定データ）
+	// configを扱うところ
+	cf, err := getConfig(url, parallelN)
 	if err != nil {
 		return err
 	}
+	if !cf.canDivDownload() {
+		cf.setParallelN(1)
+	}
 
-	parallelNum := calcParallelNum(config)
-	data := makeByteRangeArray(config.contentLength, parallelNum)
-	for i := 0; i < parallelNum; i++ {
+	// 前準備
+	data := setEachDataRange(cf)
+
+	// 分割ダウンロードしているところ
+	for i := uint64(0); i < cf.parallelN; i++ {
 		i := i
 		eg.Go(func() error {
-			fmt.Println(i)
-			err := makeRequest(&data[i], config.fileUrl, i)
-			if err != nil {
+			if err := divDownload(&data[i], cf.url, cf.filePath, i); err != nil {
 				return err
 			}
 			return nil
@@ -152,14 +80,35 @@ func Start() error {
 		return err
 	}
 
-	f1, err := os.OpenFile(genFileUrlToPath(config.fileUrl), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	// signalが送信されたら
+	// キャンセルの処理はここに書く？
+	select {
+	case <-ctx.Done():
+		return errors.New("Canceled by signal")
+	default:
+
+	}
+
+	// データマージ
+	f, err := os.OpenFile(cf.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return err
 	}
-	defer f1.Close()
+	defer f.Close()
 
-	for i := 0; i < len(newBodies); i++ {
-		f1.Write(newBodies[i])
+	for i := uint64(0); i < cf.parallelN; i++ {
+		cache, err := os.OpenFile(fmt.Sprintf("./.cache/%s_%d", cf.filePath, i), os.O_CREATE|os.O_RDONLY|os.O_APPEND, 0666)
+		if err != nil {
+			return err
+		}
+		defer cache.Close()
+		data, err2 := io.ReadAll(cache)
+		if err2 != nil {
+			fmt.Println("hoge")
+			return err2
+		}
+		f.Write(data)
+		defer os.Remove(fmt.Sprintf("./.cache/%s_%d", cf.filePath, i))
 	}
 	return nil
 }

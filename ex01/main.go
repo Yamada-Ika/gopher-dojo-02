@@ -8,8 +8,19 @@ import (
 )
 
 func main() {
-	if err := divget.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		return
+	url, err := divget.GetURL(os.Args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	var parallelN uint64
+	parallelN, err = divget.GetParallelN(os.Args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if err := divget.Run(url, parallelN); err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
+		os.Exit(1)
 	}
 }
