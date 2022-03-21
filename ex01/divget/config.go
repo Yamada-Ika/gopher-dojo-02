@@ -10,6 +10,8 @@ type config struct {
 	canDivGet bool
 }
 
+func NewConfig()
+
 func getConfig(url string, parallelN uint64) (*config, error) {
 	resp, err := http.Head(url)
 	if err != nil {

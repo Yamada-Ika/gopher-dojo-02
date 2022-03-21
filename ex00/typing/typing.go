@@ -44,17 +44,38 @@ func changeSeed() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-func Start(cf *Config) error {
+func isNoConfig(cf *Config) bool {
+	if cf == nil || cf.problems == nil {
+		return true
+	}
+	return false
+}
+
+func sendSolveCount(ctx context.Context, count uint64) context.Context {
+	return context.WithValue(ctx, "solveCount", count)
+}
+
+func waitGame(ctx context.Context) {
+	<-ctx.Done()
+}
+
+func makeContext(ctx context.Context, time time.Duration) (context.Context, context.CancelFunc) {
 	ctx, finish := signal.NotifyContext(context.Background(), syscall.SIGQUIT)
+	ctx, _ = context.WithTimeout(ctx, time)
+	return ctx, finish
+}
+
+func (cf *Config) StartGame() error {
+	if isNoConfig(cf) {
+		return nil
+	}
+	ctx, finish := makeContext(context.Background(), cf.gameTime)
 	defer finish()
-
-	ctx, _ = context.WithTimeout(ctx, cf.gameTime)
-
 	go func() {
-		var count uint64
+		var solveCount uint64
 		changeSeed()
 		for {
-			word := getRandomWord(cf.asset)
+			word := getRandomWord(cf.problems)
 			printProblem(cf.w, word)
 			ans := solve(cf.r)
 			if isEmpty(ans) {
@@ -62,20 +83,17 @@ func Start(cf *Config) error {
 				continue
 			}
 			if checkTheAnswer(word, ans) {
-				count++
-				ctx = context.WithValue(ctx, "solveCount", count)
+				solveCount++
+				ctx = sendSolveCount(ctx, solveCount)
 			}
 		}
 	}()
-
-	select {
-	case <-ctx.Done():
-		solveCount, ok := getSolveCount(ctx)
-		if ok {
-			fmt.Fprintf(cf.w, "\nTime's up! Score: %d\n", solveCount)
-		} else {
-			fmt.Fprintf(cf.w, "\nScore can not count...\n")
-		}
+	waitGame(ctx)
+	solveCount, ok := getSolveCount(ctx)
+	if ok {
+		fmt.Fprintf(cf.w, "\nTime's up! Score: %d\n", solveCount)
+	} else {
+		fmt.Fprintf(cf.w, "\nScore can not count...\n")
 	}
 	return nil
 }

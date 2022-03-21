@@ -66,28 +66,40 @@ func Run(url string, parallelN uint64) error {
 	// 前準備
 	data := setEachDataRange(cf)
 
+	eg, ctx := errgroup.WithContext(ctx)
 	// 分割ダウンロードしているところ
 	for i := uint64(0); i < cf.parallelN; i++ {
 		i := i
 		eg.Go(func() error {
-			if err := divDownload(&data[i], cf.url, cf.filePath, i); err != nil {
-				return err
+			// signalが送信されたら
+			// キャンセルの処理はここに書く？
+			select {
+			case <-ctx.Done():
+				return errors.New("Canceled by signal")
+			default:
+				if err := divDownload(&data[i], cf.url, cf.filePath, i); err != nil {
+					return err
+				}
+				return nil
 			}
-			return nil
+			// if err := divDownload(&data[i], cf.url, cf.filePath, i); err != nil {
+			// 	return err
+			// }
+			// return nil
 		})
 	}
 	if err := eg.Wait(); err != nil {
 		return err
 	}
 
-	// signalが送信されたら
-	// キャンセルの処理はここに書く？
-	select {
-	case <-ctx.Done():
-		return errors.New("Canceled by signal")
-	default:
+	// // signalが送信されたら
+	// // キャンセルの処理はここに書く？
+	// select {
+	// case <-ctx.Done():
+	// 	return errors.New("Canceled by signal")
+	// default:
 
-	}
+	// }
 
 	// データマージ
 	f, err := os.OpenFile(cf.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)

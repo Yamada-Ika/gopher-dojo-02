@@ -7,7 +7,7 @@ import (
 	"example.com/ex00/typing"
 )
 
-// func TestGetWordAsset(t *testing.T) {
+// func TestGetWord`(t *testing.T) {
 // 	type args struct {
 // 		filePath string
 // 	}
@@ -25,13 +25,13 @@ import (
 // 		tt := tt
 // 		t.Run(tt.name, func(t *testing.T) {
 // 			t.Parallel()
-// 			gotWords, err := typing.GetWordAsset(tt.args.filePath)
+// 			gotWords, err := typing.GetWordproblems(tt.args.filePath)
 // 			if (err != nil) != tt.wantErr {
-// 				t.Errorf("GetWordAsset() error = %v, wantErr %v", err, tt.wantErr)
+// 				t.Errorf("GetWordproblems() error = %v, wantErr %v", err, tt.wantErr)
 // 				return
 // 			}
 // 			if !reflect.DeepEqual(gotWords, tt.wantWords) {
-// 				t.Errorf("GetWordAsset() = %v, want %v", gotWords, tt.wantWords)
+// 				t.Errorf("GetWordproblems() = %v, want %v", gotWords, tt.wantWords)
 // 			}
 // 		})
 // 	}
