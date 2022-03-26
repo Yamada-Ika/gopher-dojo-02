@@ -4,33 +4,32 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httputil"
 	"os"
 
-	"github.com/schollz/progressbar/v3"
+	"github.com/cheggaaa/pb/v3"
 )
 
-func save(path string, dataRange *byteRange, resp *http.Response) error {
+func save(bar *pb.ProgressBar, path string, dataRange *byteRange, resp *http.Response) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	defer f.Close()
 	if err != nil {
 		return err
 	}
+	defer f.Close()
+
 	_, err = f.Seek(0, 2)
 	if err != nil {
 		return err
 	}
 
-	bar := progressbar.DefaultBytes(
-		resp.ContentLength,
-		"downloading",
-	)
+	// display progress bar
+	barReader := bar.NewProxyReader(resp.Body)
+	io.Copy(f, barReader)
+	bar.Finish()
 
-	io.Copy(io.MultiWriter(f, bar), resp.Body)
 	return nil
 }
 
-func divDownload(dataRange *byteRange, url, filePath string, index uint64) error {
+func divDownload(bar *pb.ProgressBar, dataRange *byteRange, url, filePath string, index uint64) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
@@ -38,8 +37,8 @@ func divDownload(dataRange *byteRange, url, filePath string, index uint64) error
 
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", dataRange.from, dataRange.to))
 
-	dump, _ := httputil.DumpRequestOut(req, true)
-	fmt.Printf("%s\n", dump)
+	// dump, _ := httputil.DumpRequestOut(req, true)
+	// fmt.Printf("%s\n", dump)
 
 	client := new(http.Client)
 	resp, err := client.Do(req)
@@ -48,5 +47,5 @@ func divDownload(dataRange *byteRange, url, filePath string, index uint64) error
 	}
 
 	defer resp.Body.Close()
-	return save(fmt.Sprintf("./.cache/%s_%d", filePath, index), dataRange, resp)
+	return save(bar, fmt.Sprintf("./.cache/%s_%d", filePath, index), dataRange, resp)
 }
