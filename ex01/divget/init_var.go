@@ -2,5 +2,6 @@ package divget
 
 var (
 	noURL       = ""
-	noDivNumber = 0
+	noDivNumber = uint64(0)
+	noConfig    = &config{}
 )

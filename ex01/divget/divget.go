@@ -3,11 +3,6 @@ package divget
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -17,6 +12,7 @@ type byteRange struct {
 	to   uint64
 }
 
+// size : 100, div : 4 -> 0-24, 25-49, 50-74, 75-100
 func makeByteRangeArray(fileSize, divNum uint64) []byteRange {
 	var array []byteRange
 
@@ -45,34 +41,20 @@ func makeByteRangeArray(fileSize, divNum uint64) []byteRange {
 
 var eg errgroup.Group
 
-// TODO キャンセルの処理
-func Run(url string, parallelN uint64) error {
-
-	ctx, finish := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-	ctx, _ = signal.NotifyContext(ctx, syscall.SIGINT)
-	ctx, _ = signal.NotifyContext(ctx, syscall.SIGQUIT)
-	defer finish()
-
+func Run(ctx context.Context, url string, divN uint64) error {
 	// config（divget内で使う設定データ）
-	// configを扱うところ
-	cf, err := getConfig(url, parallelN)
+	cf, err := makeConfig(url, divN)
 	if err != nil {
 		return err
 	}
-	if !cf.canDivDownload() {
-		cf.setParallelN(1)
-	}
 
 	// 前準備
-	data := setEachDataRange(cf)
+	data := loadCache(cf)
 
 	eg, ctx := errgroup.WithContext(ctx)
-	// 分割ダウンロードしているところ
-	for i := uint64(0); i < cf.parallelN; i++ {
+	for i := uint64(0); i < cf.divN; i++ {
 		i := i
 		eg.Go(func() error {
-			// signalが送信されたら
-			// キャンセルの処理はここに書く？
 			select {
 			case <-ctx.Done():
 				return errors.New("Canceled by signal")
@@ -82,45 +64,12 @@ func Run(url string, parallelN uint64) error {
 				}
 				return nil
 			}
-			// if err := divDownload(&data[i], cf.url, cf.filePath, i); err != nil {
-			// 	return err
-			// }
-			// return nil
 		})
 	}
 	if err := eg.Wait(); err != nil {
 		return err
 	}
 
-	// // signalが送信されたら
-	// // キャンセルの処理はここに書く？
-	// select {
-	// case <-ctx.Done():
-	// 	return errors.New("Canceled by signal")
-	// default:
-
-	// }
-
 	// データマージ
-	f, err := os.OpenFile(cf.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	for i := uint64(0); i < cf.parallelN; i++ {
-		cache, err := os.OpenFile(fmt.Sprintf("./.cache/%s_%d", cf.filePath, i), os.O_CREATE|os.O_RDONLY|os.O_APPEND, 0666)
-		if err != nil {
-			return err
-		}
-		defer cache.Close()
-		data, err2 := io.ReadAll(cache)
-		if err2 != nil {
-			fmt.Println("hoge")
-			return err2
-		}
-		f.Write(data)
-		defer os.Remove(fmt.Sprintf("./.cache/%s_%d", cf.filePath, i))
-	}
-	return nil
+	return mergeData(cf)
 }

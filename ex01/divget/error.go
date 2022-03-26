@@ -3,5 +3,5 @@ package divget
 import "errors"
 
 var (
-	invalidArg = errors.New("error: Invalid argument")
+	argErr = errors.New("error: Invalid argument")
 )

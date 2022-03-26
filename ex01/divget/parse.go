@@ -10,7 +10,7 @@ func parseURL(args []string) (url string, err error) {
 
 func invalidArg(args []string) error {
 	if len(args) != 3 {
-		return invalidArg
+		return argErr
 	}
 	return nil
 }
