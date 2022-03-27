@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func mergeData(cf *config) error {
+func bindData(cf *config) error {
 	f, err := os.OpenFile(cf.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return err

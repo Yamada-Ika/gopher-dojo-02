@@ -29,13 +29,21 @@ func save(bar *pb.ProgressBar, path string, dataRange *byteRange, resp *http.Res
 	return nil
 }
 
-func divDownload(bar *pb.ProgressBar, dataRange *byteRange, url, filePath string, index uint64) error {
+func makeRequest(url string, dataRange *byteRange) (*http.Request, error) {
 	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return &http.Request{}, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", dataRange.from, dataRange.to))
+	return req, nil
+}
+
+func divDownload(bar *pb.ProgressBar, dataRange *byteRange, url, filePath string, index uint64) error {
+	// make http-request
+	req, err := makeRequest(url, dataRange)
 	if err != nil {
 		return err
 	}
-
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", dataRange.from, dataRange.to))
 
 	// dump, _ := httputil.DumpRequestOut(req, true)
 	// fmt.Printf("%s\n", dump)
